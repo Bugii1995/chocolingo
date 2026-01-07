@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
 from app import models
+from app.routers import auth, topics, quiz, progress
 
 Base.metadata.create_all(bind=engine)
 
@@ -15,6 +16,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(auth.router)
+app.include_router(topics.router)
+app.include_router(quiz.router)
+app.include_router(progress.router)
 
 @app.get("/ping")
 def ping():

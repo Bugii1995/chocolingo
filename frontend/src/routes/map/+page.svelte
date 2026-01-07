@@ -1,78 +1,53 @@
 <script>
-  /**
-   * @typedef {'locked'|'active'|'completed'} Status
-   * @typedef {{ id:number, title:string, status:Status, mastery:number }} Node
-   * @typedef {{ level:'A0'|'A1'|'A2', nodes:Node[] }} Level
-   * @typedef {{ id:number, title:string, levels:Level[], open:boolean }} Cluster
-   */
+  import { onMount } from 'svelte';
+  import { progressAPI } from '$lib/api.js';
+  import { goto } from '$app/navigation';
+  import { isAuthenticated } from '$lib/auth.js';
 
-  /** @type {Cluster[]} */
-  let clusters = [
-    {
-      id: 1,
-      title: "Verbs & Tenses",
-      open: true,
-      levels: [
-        {
-          level: "A0",
-          nodes: [
-            { id: 101, title: "What is a verb?", status: "completed", mastery: 100 }
-          ]
-        },
-        {
-          level: "A1",
-          nodes: [
-            { id: 102, title: "Present tense", status: "active", mastery: 56 },
-            { id: 103, title: "Past tense", status: "locked", mastery: 0 }
-          ]
-        },
-        {
-          level: "A2",
-          nodes: [
-            { id: 104, title: "Future tense", status: "locked", mastery: 0 }
-          ]
-        }
-      ]
-    },
-    {
-      id: 2,
-      title: "Pronouns",
-      open: false,
-      levels: [
-        {
-          level: "A0",
-          nodes: [
-            { id: 201, title: "What is a pronoun?", status: "active", mastery: 34 }
-          ]
-        },
-        {
-          level: "A1",
-          nodes: [
-            { id: 202, title: "Subject pronouns", status: "locked", mastery: 0 },
-            { id: 203, title: "Object pronouns", status: "locked", mastery: 0 }
-          ]
-        },
-        {
-          level: "A2",
-          nodes: [
-            { id: 204, title: "Possessive pronouns", status: "locked", mastery: 0 }
-          ]
-        }
-      ]
+  let clusters = [];
+  let loading = true;
+  let error = '';
+
+  onMount(async () => {
+    // Redirect to login if not authenticated
+    isAuthenticated.subscribe((auth) => {
+      if (!auth) {
+        goto('/auth/login');
+      }
+    });
+
+    try {
+      const mapData = await progressAPI.getMap();
+      clusters = mapData.clusters.map(cluster => ({
+        ...cluster,
+        open: true
+      }));
+      loading = false;
+    } catch (err) {
+      error = err.message || 'Failed to load knowledge map';
+      loading = false;
     }
-  ];
+  });
 
   function toggleCluster(cluster) {
     cluster.open = !cluster.open;
+    clusters = clusters; // Trigger reactivity
   }
 
   function isLevelLocked(level) {
-    return level.nodes.every((n) => n.status === "locked");
+    return level.nodes.every((n) => n.status === 'locked');
   }
 
   function levelMastery(level) {
     const total = level.nodes.reduce((sum, n) => sum + n.mastery, 0);
     return Math.round(total / level.nodes.length);
+  }
+
+  function startTopic(topicId) {
+    if (clusters.some(c => c.levels.some(l => l.nodes.some(n => n.id === topicId && n.status === 'locked')))) {
+      return; // Don't start locked topics
+    }
+    goto(`/topics`);
   }
 </script>
 
@@ -84,50 +59,56 @@
     </p>
   </header>
 
-  {#each clusters as cluster}
-    <section class="cluster">
-      <!-- Collapsible header -->
-      <button
-        class="cluster-header"
-        on:click={() => toggleCluster(cluster)}
-        aria-expanded={cluster.open}
-      >
-        <h2>{cluster.title}</h2>
-        <span class="chevron" class:open={cluster.open}>▾</span>
-      </button>
+  {#if loading}
+    <div class="loading">Loading knowledge map...</div>
+  {:else if error}
+    <div class="error">{error}</div>
+  {:else}
+    {#each clusters as cluster}
+      <section class="cluster">
+        <!-- Collapsible header -->
+        <button
+          class="cluster-header"
+          on:click={() => toggleCluster(cluster)}
+          aria-expanded={cluster.open}
+        >
+          <h2>{cluster.title}</h2>
+          <span class="chevron" class:open={cluster.open}>▾</span>
+        </button>
 
-      <!-- Collapsible content -->
-      {#if cluster.open}
-        <div class="cluster-content">
-          {#each cluster.levels as level}
-            <div class="level" class:dimmed={isLevelLocked(level)}>
-              <div class="level-header">
-                <span class="level-label">{level.level}</span>
-                <span class="level-mastery">{levelMastery(level)}%</span>
-              </div>
+        <!-- Collapsible content -->
+        {#if cluster.open}
+          <div class="cluster-content">
+            {#each cluster.levels as level}
+              <div class="level" class:dimmed={isLevelLocked(level)}>
+                <div class="level-header">
+                  <span class="level-label">{level.level}</span>
+                  <span class="level-mastery">{levelMastery(level)}%</span>
+                </div>
 
-              <div class="nodes">
-                {#each level.nodes as node, i}
-                  <div class="node-wrapper">
-                    <div class="node {node.status}">
-                      <span class="node-title">{node.title}</span>
-                      <span class="node-mastery">
-                        {node.mastery === 100 ? '⭐' : `${node.mastery}%`}
-                      </span>
+                <div class="nodes">
+                  {#each level.nodes as node, i}
+                    <div class="node-wrapper">
+                      <div class="node {node.status}" on:click={() => startTopic(node.id)}>
+                        <span class="node-title">{node.title}</span>
+                        <span class="node-mastery">
+                          {node.mastery === 100 ? '⭐' : `${Math.round(node.mastery)}%`}
+                        </span>
+                      </div>
+
+                      {#if i < level.nodes.length - 1}
+                        <span class="connector"></span>
+                      {/if}
                     </div>
-
-                    {#if i < level.nodes.length - 1}
-                      <span class="connector"></span>
-                    {/if}
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  {/each}
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/each}
+  {/if}
 </main>
 
 <style>
@@ -144,6 +125,17 @@
   .subtitle {
     color: var(--muted);
     font-size: 0.95rem;
+  }
+
+  .loading,
+  .error {
+    text-align: center;
+    padding: 3rem;
+    color: var(--muted);
+  }
+
+  .error {
+    color: #c33;
   }
 
   /* Cluster */
@@ -247,6 +239,7 @@
       0 0 0 2px rgba(124, 74, 45, 0.25),
       0 6px 14px rgba(0, 0, 0, 0.08);
     transform: translateY(-1px);
+    cursor: pointer;
   }
 
   .node.active .node-mastery {

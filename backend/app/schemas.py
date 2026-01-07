@@ -1,10 +1,29 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from datetime import datetime
-from app.models import QuestionType, QuizMode
+import enum
+from pydantic import field_validator
+from app.models import QuestionType
+
+# ======================
+# API Enums (API-only)
+# ======================
+
+class QuestionType(str, enum.Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    FILL_BLANK = "fill_blank"
 
 
-# Auth schemas
+class QuizMode(str, enum.Enum):
+    NORMAL = "normal"
+    HARD = "hard"
+    TIMED = "timed"
+
+
+# ======================
+# Auth Schemas
+# ======================
+
 class UserRegister(BaseModel):
     username: str
     email: EmailStr
@@ -18,7 +37,7 @@ class UserLogin(BaseModel):
 
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    token_type: str = "bearer"
 
 
 class UserResponse(BaseModel):
@@ -31,37 +50,128 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
-# Topic schemas
+# ======================
+# Topic Schemas
+# ======================
+
 class TopicResponse(BaseModel):
     id: int
     title: str
     description: Optional[str]
     level: Optional[str]
     prerequisite_topic_id: Optional[int]
+    question_count: Optional[int] = None
 
     class Config:
         from_attributes = True
 
 
-# Question schemas
+class TopicCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    level: Optional[str] = None
+    prerequisite_topic_id: Optional[int] = None
+
+
+class TopicUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    level: Optional[str] = None
+    prerequisite_topic_id: Optional[int] = None
+
+
+class TopicAdminResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str]
+    level: Optional[str]
+    prerequisite_topic_id: Optional[int]
+    question_count: int
+
+    class Config:
+        from_attributes = True
+
+
+# ======================
+# Question Schemas
+# ======================
+
+# Public / Quiz-safe
 class QuestionResponse(BaseModel):
     id: int
     topic_id: int
     prompt: str
     question_type: QuestionType
     choices: Optional[List[str]]
-    # Note: correct_answer is NOT included for security
 
     class Config:
         from_attributes = True
 
 
-class QuestionWithAnswer(QuestionResponse):
+# Admin / Internal
+class QuestionAdminResponse(BaseModel):
+    id: int
+    topic_id: int
+    prompt: str
+    question_type: QuestionType
+    choices: list[str] | None
+    correct_answer: str
+    explanation: str | None
+    hint: str | None
+    difficulty: str
+    tags: list[str] | None
+    is_active: bool
+    created_at: datetime
+
+    @field_validator("question_type", mode="before")
+    @classmethod
+    def normalize_question_type(cls, v):
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+
+class QuestionCreate(BaseModel):
+    topic_id: int
+    prompt: str
+    question_type: QuestionType
+    choices: Optional[List[str]]
     correct_answer: str
     explanation: Optional[str]
+    hint: Optional[str]
+    difficulty: str = "easy"
+    tags: Optional[List[str]]
+    is_active: bool = True
 
 
-# Quiz schemas
+class QuestionUpdate(BaseModel):
+    prompt: Optional[str]
+    question_type: Optional[QuestionType]
+    choices: Optional[List[str]]
+    correct_answer: Optional[str]
+    explanation: Optional[str]
+    hint: Optional[str]
+    difficulty: Optional[str]
+    tags: Optional[List[str]]
+    is_active: Optional[bool]
+
+
+class PaginatedQuestionsResponse(BaseModel):
+    items: List[QuestionAdminResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+# ======================
+# Quiz Schemas
+# ======================
+
 class QuizSessionCreate(BaseModel):
     topic_id: int
     mode: QuizMode = QuizMode.NORMAL
@@ -83,7 +193,7 @@ class QuizSessionResponse(BaseModel):
 
 class AnswerSubmit(BaseModel):
     question_id: int
-    user_answer: str
+    answer: str
 
 
 class AnswersSubmit(BaseModel):
@@ -96,7 +206,7 @@ class AnswerResponse(BaseModel):
     user_answer: str
     is_correct: bool
     submitted_at: datetime
-    correct_answer: Optional[str] = None  # Only included in results
+    correct_answer: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -111,7 +221,10 @@ class QuizResultsResponse(BaseModel):
     topic_mastery: float
 
 
-# Progress schemas
+# ======================
+# Progress / Dashboard
+# ======================
+
 class DashboardStats(BaseModel):
     streak: int
     today_completed: int
@@ -130,10 +243,14 @@ class TopicProgress(BaseModel):
         from_attributes = True
 
 
+# ======================
+# Progress Map (UI-driven)
+# ======================
+
 class MapNode(BaseModel):
     id: int
     title: str
-    status: str  # 'locked', 'active', 'completed'
+    status: str  # locked | active | completed
     mastery: float
 
 
@@ -151,3 +268,15 @@ class MapCluster(BaseModel):
 
 class MapResponse(BaseModel):
     clusters: List[MapCluster]
+
+
+# ======================
+# Admin Dashboard Schemas
+# ======================
+
+class AdminDashboardStats(BaseModel):
+    total_topics: int
+    total_questions: int
+    active_questions: int
+    inactive_questions: int
+    total_users: int

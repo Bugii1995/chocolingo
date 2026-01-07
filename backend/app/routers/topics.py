@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from app.database import get_db
 from app import models, schemas, auth
@@ -13,7 +14,20 @@ def list_topics(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     topics = db.query(models.Topic).all()
-    return topics
+    result = []
+    for topic in topics:
+        question_count = db.query(func.count(models.Question.id)).filter(
+            models.Question.topic_id == topic.id
+        ).scalar()
+        result.append(schemas.TopicResponse(
+            id=topic.id,
+            title=topic.title,
+            description=topic.description,
+            level=topic.level,
+            prerequisite_topic_id=topic.prerequisite_topic_id,
+            question_count=question_count,
+        ))
+    return result
 
 
 @router.get("/{topic_id}", response_model=schemas.TopicResponse)
@@ -28,4 +42,16 @@ def get_topic(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Topic not found"
         )
-    return topic
+    
+    question_count = db.query(func.count(models.Question.id)).filter(
+        models.Question.topic_id == topic.id
+    ).scalar()
+    
+    return schemas.TopicResponse(
+        id=topic.id,
+        title=topic.title,
+        description=topic.description,
+        level=topic.level,
+        prerequisite_topic_id=topic.prerequisite_topic_id,
+        question_count=question_count,
+    )

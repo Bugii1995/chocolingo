@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from app.routers import admin_questions, admin_topics, admin_dashboard
 from app.database import engine, Base
 from app import models
 from app.routers import auth, topics, quiz, progress
@@ -22,7 +22,9 @@ app.include_router(auth.router)
 app.include_router(topics.router)
 app.include_router(quiz.router)
 app.include_router(progress.router)
-
+app.include_router(admin_questions.router)
+app.include_router(admin_topics.router)
+app.include_router(admin_dashboard.router)
 @app.get("/ping")
 def ping():
     return {"message": "pong from chocolingo"}
